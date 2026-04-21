@@ -1,4 +1,6 @@
 from setuptools import setup
+import os                  
+from glob import glob
 
 package_name = 'uav_swarm_pkg'
 
@@ -10,6 +12,9 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+
+        # YENİ EKLENDİ: Launch klasöründeki tüm .py dosyalarını share dizinine kopyala
+        (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -20,7 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'fixed_wing_control = uav_swarm_pkg.fixed_wing_control:main',
-            'v_formation_swarm_controller = uav_swarm_pkg.v_format_swarm:main',
+            'suru_kontrol = uav_swarm_pkg.suru_iha:main',
         ],
     },
 )
