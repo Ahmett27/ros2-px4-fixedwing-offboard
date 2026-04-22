@@ -142,7 +142,7 @@ class FixedWingPositionControl(Node):
             
             # Saniyede 4.0 radyan (Yaklaşık 230 derece) hızla takla at (Roll rate)
             msg.body_rate.x = 12.0 
-            msg.body_rate.y = 0.08  # Burnunu sabit tut
+            msg.body_rate.y = 0.0  # Burnunu sabit tut
             msg.body_rate.z = 0.0  # Sağa sola sapma
             
             # Thrust maskelendiği için uçak taklaya girdiği anki motor gazını koruyacak

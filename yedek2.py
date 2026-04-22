@@ -19,6 +19,7 @@ class FixedWingPositionControl(Node):
         
 
         self.current_pose = None
+        self.is_stabilizing_before_maneuver = False
 
         self.current_mode = "BILINMIYOR"
 
@@ -106,13 +107,30 @@ class FixedWingPositionControl(Node):
         self.mode_client.call_async(req)
         self.timer_offboard.cancel()
 
-        # YENİ EKLE: OFFBOARD'a geçtikten tam 20 saniye sonra taklayı başlat
-        self.timer_start_maneuver = self.create_timer(20.0, self.start_maneuver)
+        # YENİ EKLE: OFFBOARD'a geçtikten tam 15 saniye sonra taklayı başlat
+        self.timer_start_maneuver = self.create_timer(15.0, self.prepare_for_maneuver)
 
 
+    def prepare_for_maneuver(self):
+        """Takla öncesi 3 saniye düz uçuş yap."""
+        self.get_logger().info('Takla öncesi 3 saniye düz uçuşa geçiliyor...')
+        self.timer_start_maneuver.cancel()
+        
+        # Düz uçuş bayrağını aktif et
+        self.is_stabilizing_before_maneuver = True
+        
+        # 3 saniye sonra asıl taklayı başlat
+        self.timer_start_stabilize = self.create_timer(3.0, self.start_maneuver_after_stabilize)
+
+    def start_maneuver_after_stabilize(self):
+        """Düz uçuş tamamlandı, taklayı başlat."""
+        self.get_logger().info('Düz uçuş tamamlandı, takla başlatılıyor!')
+        self.is_stabilizing_before_maneuver = False
+        self.timer_start_stabilize.cancel()
+        self.start_maneuver()   # Orijinal start_maneuver metodunu çağır
 
     def start_maneuver(self):
-        if self.is_maneuvering:
+        if self.is_maneuvering or self.is_stabilizing_before_maneuver:
             return
             
         self.get_logger().info('OFFBOARD: Gövde Hızı (Body Rate) ile saf takla başlatılıyor!')
@@ -125,31 +143,50 @@ class FixedWingPositionControl(Node):
     def stop_maneuver(self):
         self.get_logger().info('Takla bitti, normal konum (Position) hedeflerine dönülüyor.')
         self.is_maneuvering = False
+        self.is_stabilizing_before_maneuver = False
         self.timer_stop_maneuver.cancel()
         
         # Sonraki olası manevralar için açıyı sıfırlıyoruz
         self.target_roll_rad = 0.0
 
     def publish_control_commands(self):
+        # HER ZAMAN bir PoseStamped gönder (OFFBOARD timeout'unu engellemek için)
+        pos_msg = PoseStamped()
+        pos_msg.header.stamp = self.get_clock().now().to_msg()
+        pos_msg.header.frame_id = 'map'
+        pos_msg.pose.position.x = self.get_parameter('target_x').value
+        pos_msg.pose.position.y = self.get_parameter('target_y').value
+        pos_msg.pose.position.z = self.get_parameter('target_z').value
+        self.pos_pub.publish(pos_msg)
+
+        # Manevra öncesi 3 saniye düz uçuş (body rate sıfır)
+        if self.is_stabilizing_before_maneuver:
+            att_msg = AttitudeTarget()
+            att_msg.header.stamp = self.get_clock().now().to_msg()
+            att_msg.header.frame_id = 'base_link'
+            att_msg.type_mask = 192  # Body rate kontrolü
+            att_msg.body_rate.x = 0.0
+            att_msg.body_rate.y = 0.0
+            att_msg.body_rate.z = 0.0
+            att_msg.thrust = 0.0
+            self.att_pub.publish(att_msg)
+            # Pozisyon setpoint'i zaten yukarıda gönderiliyor, return yok
+
+
+
+
+        # Eğer manevra yapıyorsak, ayrıca AttitudeTarget göndererek override et
         if self.is_maneuvering:
-            msg = AttitudeTarget()
-            msg.header.stamp = self.get_clock().now().to_msg()
-            msg.header.frame_id = 'base_link'
-            
-            # YENİ SİHİRLİ MASKE: 192 (128 Attitude Yoksay + 64 Thrust Yoksay)
-            # Bu maske otopilota: "Açıları boşver, sadece sana verdiğim HIZDA kendi ekseninde dön!" der.
-            msg.type_mask = 192 
-            
-            # Saniyede 4.0 radyan (Yaklaşık 230 derece) hızla takla at (Roll rate)
-            msg.body_rate.x = 12.0 
-            msg.body_rate.y = 0.08  # Burnunu sabit tut
-            msg.body_rate.z = 0.0  # Sağa sola sapma
-            
-            # Thrust maskelendiği için uçak taklaya girdiği anki motor gazını koruyacak
-            msg.thrust = 0.0 
-            
-            self.att_pub.publish(msg)
-            
+            att_msg = AttitudeTarget()
+            att_msg.header.stamp = self.get_clock().now().to_msg()
+            att_msg.header.frame_id = 'base_link'
+            att_msg.type_mask = 192  # Body rate kontrolü, attitude ve thrust yoksay
+            att_msg.body_rate.x = 12.0
+            att_msg.body_rate.y = 0.0
+            att_msg.body_rate.z = 0.0
+            att_msg.thrust = 0.0
+            self.att_pub.publish(att_msg)
+                
         else:
             # --- NORMAL UÇUŞ DURUMU: PoseStamped Basıyoruz ---
             msg = PoseStamped()
