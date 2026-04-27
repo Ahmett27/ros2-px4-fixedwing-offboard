@@ -1,16 +1,34 @@
+# ROS 2'nin Python ana kütüphanesini içe aktarıyoruz. Bu kütüphane ROS 2 sistemiyle iletişim kurmamızı sağlar.
 import rclpy
+# rclpy kütüphanesinin içinden Node (Düğüm) sınıfını alıyoruz. Kendi yazacağımız sınıf bu temel sınıftan miras alacak.
 from rclpy.node import Node
+# ROS 2'de mesajların iletim kalitesini (QoS - Quality of Service) ayarlamak için gereken profilleri ve kuralları içeri aktarıyoruz.
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+# Hedef konumu (X, Y, Z) ve yönelimi bildirmek için standart geometri mesaj tipini (PoseStamped) içeri aktarıyoruz.
 from geometry_msgs.msg import PoseStamped
+# MAVROS üzerinden PX4 otopilotuna komut gönderebilmek için gerekli servis tiplerini içeri aktarıyoruz:
 from mavros_msgs.srv import CommandBool, SetMode, ParamSet 
+# İleri düzey trigonometrik ve matematiksel işlemler (sin, cos, vb.) için Python'un yerleşik math kütüphanesini ekliyoruz.
 import math
+# MAVROS'tan uçağın anlık durumunu (bağlantı var mı, arm edilmiş mi, hangi modda uçuyor) okumak için State mesajını alıyoruz.
 from mavros_msgs.msg import State
+# Uçağa yönelim (Attitude) veya gövde dönüş hızı (Body Rate) komutları göndermek için AttitudeTarget mesaj tipini alıyoruz.
 from mavros_msgs.msg import AttitudeTarget
+# Uçağın motor gücünü (Thrust) ayarlamak için Thrust mesaj tipini içeri aktarıyoruz.
 from mavros_msgs.msg import Thrust
 
+# Klavye okuma ve arka plan işlemi (Thread) için gereken standart Python kütüphaneleri:
+import threading
+import sys
+import termios
+import tty
 
+
+# Kendi ROS 2 düğümümüzü (Node) temsil eden sınıfı tanımlıyoruz. Node sınıfından miras alıyor.
 class FixedWingPositionControl(Node):
+    # Sınıfın başlatıcı (constructor) fonksiyonu. Düğüm ayağa kalktığında ilk burası çalışır.
     def __init__(self):
+        # Üst sınıfın (Node) başlatıcısını çağırıyoruz ve bu ROS 2 düğümüne 'fixed_wing_controller' adını veriyoruz.
         super().__init__('fixed_wing_controller')
 
         self.declare_parameter('target_x', 300.0) 
@@ -18,15 +36,19 @@ class FixedWingPositionControl(Node):
         self.declare_parameter('target_z', 200.0)  
         
 
+        # Uçağın anlık konumunu (X, Y, Z) tutacağımız değişken. Başlangıçta veri gelmediği için None (boş) yapıyoruz.
         self.current_pose = None
 
+        # Uçağın anlık uçuş modunu tutacağımız değişken. Başlangıçta henüz okuyamadığımız için "BILINMIYOR" diyoruz.
         self.current_mode = "BILINMIYOR"
 
         # Manevra durum kontrolü
+        # Uçağın an itibariyle takla manevrası yapıp yapmadığını tutan mantıksal (boolean) bayrak (flag). Başlangıçta False.
         self.is_maneuvering = False
-        self.target_roll_rad = 0.0  # Radyan cinsinden hedef yatış açımız
+        self.target_roll_rad = 0.0 
 
         # __init__ içine şu değişkenleri ekle
+        # Uçağın anlık yönelimini 4 boyutlu Quaternion (qx, qy, qz, qw) cinsinden tutacak değişken.
         self.current_quat = None
         self.locked_yaw = 0.0
         self.locked_pitch = 0.0
@@ -43,9 +65,7 @@ class FixedWingPositionControl(Node):
             10
         )
 
-
-
-
+        # Hızlı akan sensör verileri (pozisyon gibi) için özel bir QoS (Hizmet Kalitesi) profili oluşturuyoruz.
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,   # Mesaj kaybolabilir, yeniden gönderme yok
             durability=DurabilityPolicy.VOLATILE,         # Geç bağlanan subscriber eski mesajları almaz
@@ -53,20 +73,23 @@ class FixedWingPositionControl(Node):
             depth=1                                       # N=1, sadece en son mesaj
         )
 
+        # Uçağın hedeflenen konumunu (Setpoint) MAVROS'a göndermek için bir yayıncı (Publisher) oluşturuyoruz. QoS profilimizi kullanıyor.
         self.pos_pub = self.create_publisher(PoseStamped, '/mavros/setpoint_position/local', qos_profile)
 
         # Tek mesaj, tek topik! Senkronizasyon derdi yok.
+        # Uçağın hedeflenen yönelimini (Attitude) veya dönüş hızlarını göndermek için başka bir yayıncı oluşturuyoruz.
         self.att_pub = self.create_publisher(
             AttitudeTarget, 
             '/mavros/setpoint_raw/attitude', 
             10
         )
 
+        # PX4 motorlarını çalıştırmak, mod değiştirmek ve parametre ayarlamak için istemciler.
         self.arming_client = self.create_client(CommandBool, '/mavros/cmd/arming')
         self.mode_client = self.create_client(SetMode, '/mavros/set_mode')
         self.param_client = self.create_client(ParamSet, '/mavros/param/set') 
 
-
+        # Uçağın o anki gerçek konumunu (Local Pose) okumak için abone oluyoruz.
         self.local_pos_sub = self.create_subscription(
             PoseStamped, 
             '/mavros/local_position/pose', 
@@ -77,10 +100,51 @@ class FixedWingPositionControl(Node):
         # SAAT: Her 1.0 saniyede bir 'log_position' görevini tetikler
         self.log_timer = self.create_timer(1.0, self.log_position)
         
+        # --- YENİ BÖLÜM: KLAVYE DİNLEME ---
+        # Klavye okuma işlemini ana döngüyü (50Hz publish) kilitlememesi için ayrı bir 'thread' (kanal) üzerinden başlatıyoruz.
+        self.keyboard_thread = threading.Thread(target=self.wait_for_key)
+        # Program kapandığında (Ctrl+C) bu thread'in de otomatik kapanması için 'daemon' bayrağını True yapıyoruz.
+        self.keyboard_thread.daemon = True
+        self.keyboard_thread.start()
+        
+        # Tüm tanımlamalar bittikten sonra uçuş hazırlıklarını başlatan kendi yazdığımız fonksiyonu çağırıyoruz.
         self.init_sequence()
 
+    # Klavye tuşlarını yakalayan özel fonksiyon (Linux/Ubuntu Terminali için)
+    def wait_for_key(self):
+        # Terminalin o anki varsayılan ayarlarını saklıyoruz ki çıkarken bozmayalım.
+        settings = termios.tcgetattr(sys.stdin)
+        try:
+            while True:
+                # Terminali "raw" (ham) moda alıyoruz. Böylece kullanıcı tuşa basıp "Enter"a basmasını beklemeden tuşu anında okuruz.
+                tty.setraw(sys.stdin.fileno())
+                # Klavyeden tek bir (1) karakter okuyoruz.
+                key = sys.stdin.read(1)
+                
+                # Eğer basılan tuş 'k' veya 'K' ise:
+                if key.lower() == 'k':
+                    # GÜVENLİK KİLİDİ 1: Sensörden konum verisi gelmiş mi VE irtifa 150 metreden büyük mü?
+                    if self.current_pose is not None and self.current_pose.z > 150.0:
+                        # GÜVENLİK KİLİDİ 2: Sadece uçağın modu OFFBOARD ise manevraya izin veriyoruz.
+                        if self.current_mode == "OFFBOARD":
+                            self.get_logger().info('!!! KLAVYEDEN TETİKLENDİ: İRTİFA YETERLİ, TAKLA BAŞLIYOR !!!')
+                            self.start_maneuver()
+                        else:
+                            self.get_logger().warn('Uyarı: Manevra için uçağın OFFBOARD modunda olması gerekiyor.')
+                    else:
+                        # İrtifa kurtarmıyorsa veya daha uçak havalanmadıysa uyarı mesajı ver ve taklayı reddet.
+                        mevcut_irtifa = self.current_pose.z if self.current_pose is not None else 0.0
+                        self.get_logger().warn(f'GÜVENLİK UYARISI: İrtifa 150 metreden düşük! (Mevcut: {mevcut_irtifa:.1f}m). Takla komutu YALITILDI.')
+                
+                # Eğer kullanıcı acil çıkış (q) yapmak isterse döngüyü kırabilir.
+                if key.lower() == 'q':
+                    break
+        finally:
+            # İşlem bittiğinde terminal ayarlarını tekrar eski normal haline (satır satır okuma) getiriyoruz.
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+
     def init_sequence(self):
-        self.get_logger().info('Konum Kontrolu baslatiliyor...')
+        self.get_logger().info('Konum Kontrolu baslatiliyor... TAKLA İÇİN "K" TUŞUNA BASIN (İrtifa > 150m ise çalışır).')
         
         self.set_px4_param('NAV_DLL_ACT', 0)      
         self.set_px4_param('NAV_RCL_ACT', 0)      
@@ -101,14 +165,10 @@ class FixedWingPositionControl(Node):
         self.param_client.call_async(req)
 
     def switch_to_offboard(self):
-        self.get_logger().info('OFFBOARD moduna geçiliyor, hedefe gidiliyor...')
+        self.get_logger().info('OFFBOARD moduna geçiliyor, hedefe gidiliyor... (Takla atmak için terminalden "k" tuşuna basabilirsiniz)')
         req = SetMode.Request(custom_mode='OFFBOARD')
         self.mode_client.call_async(req)
         self.timer_offboard.cancel()
-
-        # YENİ EKLE: OFFBOARD'a geçtikten tam 20 saniye sonra taklayı başlat
-        self.timer_start_maneuver = self.create_timer(20.0, self.start_maneuver)
-
 
 
     def start_maneuver(self):
@@ -117,10 +177,9 @@ class FixedWingPositionControl(Node):
             
         self.get_logger().info('OFFBOARD: Gövde Hızı (Body Rate) ile saf takla başlatılıyor!')
         self.is_maneuvering = True
-        self.timer_start_maneuver.cancel()
         
-        # Takla süresini 1.5 saniye yapıyoruz. Hızlı döneceği için irtifa kaybetmeyecek.
-        self.timer_stop_maneuver = self.create_timer(5, self.stop_maneuver)
+        # Takla süresini 5 saniye yapıyoruz.
+        self.timer_stop_maneuver = self.create_timer(5.0, self.stop_maneuver)
 
     def stop_maneuver(self):
         self.get_logger().info('Takla bitti, normal konum (Position) hedeflerine dönülüyor.')
@@ -140,8 +199,8 @@ class FixedWingPositionControl(Node):
             # Bu maske otopilota: "Açıları boşver, sadece sana verdiğim HIZDA kendi ekseninde dön!" der.
             msg.type_mask = 192 
             
-            # Saniyede 4.0 radyan (Yaklaşık 230 derece) hızla takla at (Roll rate)
-            msg.body_rate.x = 12.0 
+
+            msg.body_rate.x = 4.0 
             msg.body_rate.y = 0.08  # Burnunu sabit tut
             msg.body_rate.z = 0.0  # Sağa sola sapma
             
