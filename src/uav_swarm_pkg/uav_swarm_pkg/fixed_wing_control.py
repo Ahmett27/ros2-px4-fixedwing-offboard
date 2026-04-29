@@ -297,20 +297,6 @@ class FixedWingPositionControl(Node):
             
             self.pos_pub.publish(msg)
 
-    def euler_to_quaternion(self, roll, pitch, yaw):
-        cy = math.cos(yaw * 0.5)
-        sy = math.sin(yaw * 0.5)
-        cp = math.cos(pitch * 0.5)
-        sp = math.sin(pitch * 0.5)
-        cr = math.cos(roll * 0.5)
-        sr = math.sin(roll * 0.5)
-
-        qw = cr * cp * cy + sr * sp * sy
-        qx = sr * cp * cy - cr * sp * sy
-        qy = cr * sp * cy + sr * cp * sy
-        qz = cr * cp * sy - sr * sp * cy
-
-        return [qx, qy, qz, qw]
     
     def pose_callback(self, msg):
         self.current_pose = msg.pose.position
@@ -318,22 +304,6 @@ class FixedWingPositionControl(Node):
 
     def state_callback(self, msg):
         self.current_mode = msg.mode
-
-    def get_pitch_yaw_from_quaternion(self, q):
-        if q is None:
-            return 0.0, 0.0
-        
-        sinp = 2.0 * (q.w * q.y - q.z * q.x)
-        if abs(sinp) >= 1:
-            pitch = math.copysign(math.pi / 2, sinp)
-        else:
-            pitch = math.asin(sinp)
-            
-        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-        yaw = math.atan2(siny_cosp, cosy_cosp)
-        
-        return pitch, yaw
  
     def log_position(self):
         if self.current_pose is not None:
