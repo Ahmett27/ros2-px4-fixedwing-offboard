@@ -11,7 +11,7 @@ import threading
 import sys
 import termios
 import tty
-
+import random
 
 class FixedWingPositionControl(Node):
     def __init__(self):
@@ -31,6 +31,11 @@ class FixedWingPositionControl(Node):
         self.current_quat = None
         self.locked_yaw = 0.0
         self.locked_pitch = 0.0
+
+
+        self.crazy_roll_rate = 0.0
+        self.crazy_pitch_rate = 0.0
+        self.crazy_timer = None
         
         self.timer = self.create_timer(0.02, self.publish_control_commands)
         
@@ -125,6 +130,18 @@ class FixedWingPositionControl(Node):
                     else:
                         mevcut_irtifa = self.current_pose.z if self.current_pose is not None else 0.0
                         self.get_logger().warn(f'GÜVENLİK UYARISI: İrtifa 150 metreden düşük! (Mevcut: {mevcut_irtifa:.1f}m).')
+
+
+                elif key.lower() == 'c':
+                    if self.current_pose is not None and self.current_pose.z > 100.0:
+                        if self.current_mode == "OFFBOARD":
+                            self.get_logger().info('!!! KLAVYEDEN TETİKLENDİ: ÇILGIN İVAN KAÇIŞI BAŞLIYOR !!!')
+                            self.start_crazy_ivan()
+                        else:
+                            self.get_logger().warn('Uyarı: Manevra için uçağın OFFBOARD modunda olması gerekiyor.')
+                    else:
+                        mevcut_irtifa = self.current_pose.z if self.current_pose is not None else 0.0
+                        self.get_logger().warn(f'GÜVENLİK UYARISI: İrtifa çok düşük! (Mevcut: {mevcut_irtifa:.1f}m). Çarparsın!')
 
                 if key.lower() == 'q':
                     break
@@ -229,6 +246,38 @@ class FixedWingPositionControl(Node):
         
         self.timer_stop_maneuver = self.create_timer(0.4, self.stop_maneuver)
 
+
+
+    def start_crazy_ivan(self):
+        if self.is_maneuvering:
+            return
+        
+        self.get_logger().info('CRAZY IVAN: Tahmin edilemez manevralar devrede, tam gaz kaçış!')
+        self.is_maneuvering = True
+        self.maneuver_type = 'crazy_ivan'
+        
+        # İlk rastgele değerleri hemen ata
+        self.update_crazy_rates()
+        
+        # ZEKASI BURADA: Her 1.5 saniyede bir uçağın yönünü ve açısını rastgele değiştir!
+        self.crazy_timer = self.create_timer(1.5, self.update_crazy_rates)
+        
+        # 10 saniye boyunca havada çırpınsın, sonra normal uçuştan devam etsin
+        self.timer_stop_maneuver = self.create_timer(6.0, self.stop_crazy_ivan)
+
+    def update_crazy_rates(self):
+        # -1.5 ile +1.5 radyan arası agresif sağ/sol yatış
+        self.crazy_roll_rate = random.uniform(-1.5, 1.5)
+        # Stall olmamak için burun (pitch) hareketini -1.0 ile +1.0 arası sınırlıyoruz
+        self.crazy_pitch_rate = random.uniform(-1.0, 1.0) 
+        self.get_logger().info(f'>> Crazy Ivan Güncelleme: Roll: {self.crazy_roll_rate:.2f}, Pitch: {self.crazy_pitch_rate:.2f}')
+
+    def stop_crazy_ivan(self):
+        # Çılgınlık bittiğinde rastgele sayı üreten zamanlayıcıyı kapat
+        if self.crazy_timer is not None:
+            self.crazy_timer.cancel()
+        self.stop_maneuver() # Uçağı tekrar düz uçuşa al
+
     def publish_control_commands(self):
         if self.is_maneuvering:
             msg = AttitudeTarget()
@@ -284,6 +333,13 @@ class FixedWingPositionControl(Node):
                 msg.body_rate.y = 0.0  
                 msg.body_rate.z = 0.0  
                 msg.thrust = 0.8       
+
+            elif self.maneuver_type == 'crazy_ivan':
+                msg.body_rate.x = self.crazy_roll_rate   
+                msg.body_rate.y = self.crazy_pitch_rate  
+                # Uçağın kuyruğunu da (Yaw) hafifçe rastgele savur ki hedef şaşırsın
+                msg.body_rate.z = random.uniform(-0.5, 0.5) 
+                msg.thrust = 3.40 # Kaçış manevrası olduğu için tam gaz ivmelen
             
             self.att_pub.publish(msg)
             
