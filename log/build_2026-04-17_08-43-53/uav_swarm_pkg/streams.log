@@ -1,0 +1,24 @@
+[0.787s] Invoking command in '/home/ahmet/ros2_plane_workspace/src/uav_swarm_pkg': PYTHONPATH=/home/ahmet/ros2_plane_workspace/build/uav_swarm_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ahmet/ros2_plane_workspace/install/uav_swarm_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/uav_swarm_pkg build --build-base /home/ahmet/ros2_plane_workspace/build/uav_swarm_pkg/build install --record /home/ahmet/ros2_plane_workspace/build/uav_swarm_pkg/install.log --single-version-externally-managed install_data
+[1.143s] running egg_info
+[1.144s] writing ../../build/uav_swarm_pkg/uav_swarm_pkg.egg-info/PKG-INFO
+[1.145s] writing dependency_links to ../../build/uav_swarm_pkg/uav_swarm_pkg.egg-info/dependency_links.txt
+[1.145s] writing entry points to ../../build/uav_swarm_pkg/uav_swarm_pkg.egg-info/entry_points.txt
+[1.145s] writing requirements to ../../build/uav_swarm_pkg/uav_swarm_pkg.egg-info/requires.txt
+[1.145s] writing top-level names to ../../build/uav_swarm_pkg/uav_swarm_pkg.egg-info/top_level.txt
+[1.150s] reading manifest file '../../build/uav_swarm_pkg/uav_swarm_pkg.egg-info/SOURCES.txt'
+[1.150s] writing manifest file '../../build/uav_swarm_pkg/uav_swarm_pkg.egg-info/SOURCES.txt'
+[1.151s] running build
+[1.151s] running build_py
+[1.151s] copying uav_swarm_pkg/v_format_swarm.py -> /home/ahmet/ros2_plane_workspace/build/uav_swarm_pkg/build/lib/uav_swarm_pkg
+[1.151s] running install
+[1.152s] running install_lib
+[1.153s] copying /home/ahmet/ros2_plane_workspace/build/uav_swarm_pkg/build/lib/uav_swarm_pkg/v_format_swarm.py -> /home/ahmet/ros2_plane_workspace/install/uav_swarm_pkg/lib/python3.10/site-packages/uav_swarm_pkg
+[1.153s] byte-compiling /home/ahmet/ros2_plane_workspace/install/uav_swarm_pkg/lib/python3.10/site-packages/uav_swarm_pkg/v_format_swarm.py to v_format_swarm.cpython-310.pyc
+[1.156s] running install_data
+[1.156s] running install_egg_info
+[1.159s] removing '/home/ahmet/ros2_plane_workspace/install/uav_swarm_pkg/lib/python3.10/site-packages/uav_swarm_pkg-0.0.0-py3.10.egg-info' (and everything under it)
+[1.159s] Copying ../../build/uav_swarm_pkg/uav_swarm_pkg.egg-info to /home/ahmet/ros2_plane_workspace/install/uav_swarm_pkg/lib/python3.10/site-packages/uav_swarm_pkg-0.0.0-py3.10.egg-info
+[1.160s] running install_scripts
+[1.187s] Installing v_formation_swarm_controller script to /home/ahmet/ros2_plane_workspace/install/uav_swarm_pkg/lib/uav_swarm_pkg
+[1.187s] writing list of installed files to '/home/ahmet/ros2_plane_workspace/build/uav_swarm_pkg/install.log'
+[1.239s] Invoked command in '/home/ahmet/ros2_plane_workspace/src/uav_swarm_pkg' returned '0': PYTHONPATH=/home/ahmet/ros2_plane_workspace/build/uav_swarm_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ahmet/ros2_plane_workspace/install/uav_swarm_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/uav_swarm_pkg build --build-base /home/ahmet/ros2_plane_workspace/build/uav_swarm_pkg/build install --record /home/ahmet/ros2_plane_workspace/build/uav_swarm_pkg/install.log --single-version-externally-managed install_data

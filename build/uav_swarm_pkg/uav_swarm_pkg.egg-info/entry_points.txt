@@ -1,0 +1,4 @@
+[console_scripts]
+fixed_wing_control = uav_swarm_pkg.fixed_wing_control:main
+suru_kontrol = uav_swarm_pkg.suru_iha:main
+
